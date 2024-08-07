@@ -1,0 +1,2 @@
+Top-left corner: (277, 136)
+Bottom-right corner: (1643, 904)

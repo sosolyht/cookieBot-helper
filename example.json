@@ -1,0 +1,50 @@
+{
+  "profile": "string",
+  "overview": {
+    "os": "windows",
+    "browser": "chrome"
+  },
+  "proxy": {
+    "protocol": "http",
+    "proxy": "ip:port:username:password"
+  },
+  "extensions": {},
+  "timezone": {},
+  "webrtc": {},
+  "geolocation": {},
+  "advanced": {
+    "start_url": "",
+    "screen_resolution": "1920x1080",
+    "cpu": 4,
+    "memory": 8192
+  },
+  "cookies": [
+    {
+      "domain": ".amazon.com",
+      "expirationdate": 1752755397.234378,
+      "hostonly": false,
+      "httponly": false,
+      "name": "ubid-main",
+      "path": "/",
+      "samesite": null,
+      "secure": true,
+      "session": false,
+      "storeid": null,
+      "value": "135-6059817-6697243"
+    },
+    {
+      "domain": ".amazon.com",
+      "expirationdate": 1752755368.720552,
+      "hostonly": false,
+      "httponly": false,
+      "name": "session-token",
+      "path": "/",
+      "samesite": null,
+      "secure": true,
+      "session": false,
+      "storeid": null,
+      "value": "\"DHCR8skaUxEEwH/vpQ+JLomS4xH+afXLWa5Q==\""
+    }
+  ],
+  "bookmarks": "string"
+}

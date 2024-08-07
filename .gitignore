@@ -1,0 +1,25 @@
+# 가상 환경 디렉토리
+.venv/
+
+# 빌드 디렉토리
+build/
+dist/
+
+# 로그 파일
+logs/
+
+# PyInstaller spec 파일
+main.spec
+
+# Config 디렉토리
+config/
+
+# Python 캐시 파일
+__pycache__/
+*.pyc
+
+# .DS_Store 파일 (macOS)
+.DS_Store
+
+# JetBrains IDE
+.idea/
