@@ -1,3 +1,4 @@
+#new_profile_menu_select.py
 import psutil
 import win32gui
 import win32con
@@ -12,8 +13,8 @@ class MenuClicker:
         self.MENU_ITEMS = [
         "Overview", "Proxy", "Extensions", "Timezone", "WebRTC",
         "Geolocation", "Advanced", "Cookies", "Bookmarks"
-    ]
-        self.calculate_coords = calculate_relative_coords
+        ]
+        self.calculate_coords = calculate_relative_coords(1366, 768, 50/1366, 76/768, 300/1366, 614/768)
 
     def bring_process_to_foreground(self, pid):
         def callback(hwnd, hwnds):
