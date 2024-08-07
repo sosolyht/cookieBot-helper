@@ -6,27 +6,50 @@ from PIL import Image
 import cv2
 import numpy as np
 import pytesseract
+import win32gui
 
 pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
-
-import win32gui
 
 
 def calculate_relative_coords(rel_x, rel_y, rel_width, rel_height):
     def calculate(hwnd):
-        rect = win32gui.GetWindowRect(hwnd)
-        left, top, right, bottom = rect
-        width = right - left
-        height = bottom - top
+        try:
+            rect = win32gui.GetWindowRect(hwnd)
+            width = rect[2] - rect[0]
+            height = rect[3] - rect[1]
 
-        actual_x = int(rel_x * width)
-        actual_y = int(rel_y * height)
-        actual_width = int(rel_width * width)
-        actual_height = int(rel_height * height)
+            x = int(rel_x * width)
+            y = int(rel_y * height)
+            w = int(rel_width * width)
+            h = int(rel_height * height)
 
-        return actual_x, actual_y, actual_width, actual_height
+            return x, y, w, h
+        except Exception as e:
+            return None
 
     return calculate
+
+
+def save_image(image, prefix=''):
+    if not os.path.exists('debug_images'):
+        os.makedirs('debug_images')
+    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    filename = f'debug_images/{prefix}_{timestamp}.png'
+
+    if isinstance(image, Image.Image):
+        image.save(filename)
+    elif isinstance(image, np.ndarray):
+        if image.ndim == 2:
+            cv2.imwrite(filename, image)
+        elif image.ndim == 3 and image.shape[2] == 3:
+            cv2.imwrite(filename, cv2.cvtColor(image, cv2.COLOR_RGB2BGR))
+        else:
+            cv2.imwrite(filename, image)
+    else:
+        raise ValueError("Unsupported image type")
+
+    print(f"Saved debug image: {filename}")
+    return filename
 
 
 def capture_window(hwnd, x, y, width, height):
@@ -42,29 +65,41 @@ def capture_window(hwnd, x, y, width, height):
         }
         screenshot = sct.grab(monitor)
         img = Image.frombytes('RGB', (screenshot.width, screenshot.height), screenshot.rgb)
-
-        if not os.path.exists('screenshots'):
-            os.makedirs('screenshots')
-
-        # 파일 이름 생성 (현재 시간 기반)
-        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-        file_path = os.path.join('screenshots', f'screenshot_{timestamp}.png')
-
-        # 이미지 저장
-        img.save(file_path)
-        print(f"Screenshot saved to {file_path}")
-
-        return img, (x, y)
+        save_image(img, 'raw_screenshot')  # PIL Image 저장
+        img_np = np.array(img)
+        return img_np, (x, y)
 
 
 def preprocess_image(image):
-    opencv_image = cv2.cvtColor(np.array(image), cv2.COLOR_RGB2BGR)
+    if image is None or not isinstance(image, np.ndarray):
+        raise ValueError("Invalid input image")
+
+    # RGB to BGR 변환
+    opencv_image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
+
+    # 그레이스케일 변환
     gray = cv2.cvtColor(opencv_image, cv2.COLOR_BGR2GRAY)
-    sharpen_kernel = np.array([[-1, -1, -1], [-1, 9, -1], [-1, -1, -1]])
-    sharpen = cv2.filter2D(gray, -1, sharpen_kernel)
-    _, thresh = cv2.threshold(sharpen, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
-    return Image.fromarray(thresh)
+    save_image(gray, 'gray')
+
+    # 노이즈 제거
+    denoised = cv2.fastNlMeansDenoising(gray, None, 10, 7, 21)
+    save_image(denoised, 'denoised')
+
+    # 적응형 이진화
+    binary = cv2.adaptiveThreshold(denoised, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 11, 2)
+    save_image(binary, 'binary')
+
+    # 모폴로지 연산으로 글자 다듬기
+    kernel = np.ones((1, 1), np.uint8)
+    opening = cv2.morphologyEx(binary, cv2.MORPH_OPEN, kernel)
+    save_image(opening, 'opening')
+
+    print(f"Preprocessed image type: {type(opening)}")
+    print(f"Preprocessed image shape: {opening.shape}")
+
+    return opening
 
 
 def extract_text(image, custom_config):
+    save_image(image, 'before_ocr')  # OCR 전 이미지 저장
     return pytesseract.image_to_data(image, config=custom_config, output_type=pytesseract.Output.DICT)

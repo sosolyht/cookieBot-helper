@@ -1,32 +1,21 @@
-# new_profile.py
-
 import json
-import os
-import cv2
-import numpy as np
-from PIL import Image
 import datetime
 from typing import List, Dict, Any, Optional
-import win32gui
-import win32com.client
-import win32process
-import psutil
+from PIL import Image
 import time
-from screen_utils import calculate_relative_coords, capture_window, preprocess_image, extract_text
+from screen_utils import capture_window, preprocess_image, extract_text
 from new_profile_menu_select import MenuClicker
-
+from menu_finder import MainMenu  # MainMenu를 임포트합니다.
 
 class Overview:
     def __init__(self, data: Dict[str, str]):
         self.os: str = data.get('os', '')
         self.browser: str = data.get('browser', '')
 
-
 class Proxy:
     def __init__(self, data: Dict[str, str]):
         self.protocol: str = data.get('protocol', '')
         self.proxy: str = data.get('proxy', '')
-
 
 class Advanced:
     def __init__(self, data: Dict[str, Any]):
@@ -34,7 +23,6 @@ class Advanced:
         self.screen_resolution: str = data.get('screen_resolution', '')
         self.cpu: int = data.get('cpu', 0)
         self.memory: int = data.get('memory', 0)
-
 
 class Cookie:
     def __init__(self, data: Dict[str, Any]):
@@ -50,7 +38,6 @@ class Cookie:
         self.storeid: Optional[str] = data.get('storeid')
         self.value: str = data.get('value', '')
 
-
 class BrowserProfile:
     def __init__(self, profile: str, **data: Any):
         self.profile: str = profile
@@ -63,7 +50,6 @@ class BrowserProfile:
         self.advanced: Advanced = Advanced(data.get('advanced', {}))
         self.cookies: List[Cookie] = [Cookie(cookie) for cookie in data.get('cookies', [])]
         self.bookmarks: str = data.get('bookmarks', '')
-
 
 def process_profile(json_data: str) -> Optional[BrowserProfile]:
     try:
@@ -79,42 +65,49 @@ def process_profile(json_data: str) -> Optional[BrowserProfile]:
         print(f"프로필 생성 중 오류 발생: {str(e)}")
     return None
 
-
 def get_overview_text_and_image(pid: int) -> tuple[List[str], Optional[Image.Image]]:
-    clicker = MenuClicker()
+    hwnd = bring_process_to_foreground(pid)  # 이 함수는 적절히 정의되어야 합니다.
+    if hwnd:
+        main_menu = MainMenu(hwnd)  # MainMenu 객체를 초기화합니다.
+        clicker = MenuClicker(main_menu)  # MenuClicker에 MainMenu를 전달합니다.
 
-    if clicker.Overview(pid):
+        # Overview로 이동 시도
+        if not clicker.Overview():
+            print("Overview 클릭에 실패했습니다. NewProfile부터 다시 시도합니다.")
+            # NewProfile 클릭 후 다시 Overview 시도
+            if clicker.NewProfile():
+                time.sleep(2)  # NewProfile이 로드될 때까지 대기
+                if not clicker.Overview():
+                    print("NewProfile 이후 Overview 클릭에 실패했습니다.")
+                    return [], None
+            else:
+                print("NewProfile 클릭에 실패했습니다.")
+                return [], None
+
+        # Overview 클릭 성공 시
         time.sleep(2)  # Overview 페이지가 로드될 때까지 대기
 
-        hwnd = clicker.bring_process_to_foreground(pid)
+        screenshot, offset = capture_window(hwnd, 0, 0, 0, 0)  # 전체 화면 캡처
 
-        if hwnd:
-            x, y, width, height = clicker.calculate_coords(hwnd)
-            screenshot, offset = capture_window(hwnd, x, y, width, height)
+        preprocessed_image = preprocess_image(screenshot)
 
-            preprocessed_image = preprocess_image(screenshot)
+        custom_config = r'--oem 3 --psm 6'
+        data = extract_text(preprocessed_image, custom_config)
 
-            custom_config = r'--oem 3 --psm 6'
-            data = extract_text(preprocessed_image, custom_config)
+        all_text = []
+        for i in range(len(data['level'])):
+            if int(data['conf'][i]) > 60:
+                text = data['text'][i].strip()
+                if text:
+                    all_text.append(text)
 
-            all_text = []
-            for i in range(len(data['level'])):
-                if int(data['conf'][i]) > 60:
-                    text = data['text'][i].strip()
-                    if text:
-                        all_text.append(text)
-
-            return all_text, screenshot
-        else:
-            print("Failed to bring the window to foreground.")
-            return [], None
+        return all_text, screenshot
     else:
-        print("Failed to click on Overview")
+        print("윈도우를 전경으로 가져오는 데 실패했습니다.")
         return [], None
 
-
 if __name__ == "__main__":
-    # JSON 데이터 예시
+    # JSON 데이터 예제
     sample_message = '''
     {
         "profile": "Sample Profile",
@@ -171,8 +164,8 @@ if __name__ == "__main__":
 
         print(f"북마크: {profile.bookmarks}")
 
-    # Overview 텍스트와 이미지 가져오기
-    pid = 17736  # 실제 프로세스 ID로 변경해야 합니다
+    # Overview 텍스트 및 이미지 가져오기
+    pid = 16572  # 실제 프로세스 ID로 변경
     overview_text, screenshot = get_overview_text_and_image(pid)
     if overview_text:
         print("Overview 페이지의 텍스트:")

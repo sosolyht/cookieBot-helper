@@ -26,5 +26,6 @@ __pycache__/
 
 /*.png
 /screenshots
+/debug_images
 
 !img/
