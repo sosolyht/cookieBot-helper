@@ -26,7 +26,7 @@ __pycache__/
 
 /*.png
 /screenshots
-/debug_images
+/internal/debug
 /resources
 app.log
 

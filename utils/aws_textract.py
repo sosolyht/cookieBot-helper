@@ -1,3 +1,6 @@
+# File: aws_textract.py
+# Path: utils\aws_textract.py
+
 import boto3
 from PIL import Image
 from utils.aws_config import load_aws_config
