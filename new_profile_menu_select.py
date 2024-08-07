@@ -14,7 +14,7 @@ class MenuClicker:
         "Overview", "Proxy", "Extensions", "Timezone", "WebRTC",
         "Geolocation", "Advanced", "Cookies", "Bookmarks"
         ]
-        self.calculate_coords = calculate_relative_coords(1366, 768, 50/1366, 76/768, 300/1366, 614/768)
+        self.calculate_coords = calculate_relative_coords(50/1366, 76/768, 300/1366, 614/768)
 
     def bring_process_to_foreground(self, pid):
         def callback(hwnd, hwnds):
