@@ -1,84 +1,114 @@
-# File: profile_menu.py
-# Path: internal\profile_menu.py
-
-import win32gui
 import time
+import os
 import pyautogui
-from utils.screen_utils import calculate_relative_coords, capture_window, preprocess_image, extract_text, save_image
+import win32gui
+from utils.get_hwnd import get_hwnd
 from utils.foreground import bring_window_to_foreground
+from utils.screen_utils import save_image
+from utils.aws_textract import aws_textract_helper
 from utils.my_logger import setup_logger
 
+# 로거 설정
 logger = setup_logger(__name__)
 
-def extract_text_and_click(image, hwnd, offset, target_text):
+MENU_ITEMS = [
+    "Overview",
+    "Proxy",
+    "Extensions",
+    "Timezone",
+    "WebRTC",
+    "Geolocation",
+    "Advanced",
+    "Cookies",
+    "Bookmarks"
+]
+
+def capture_screenshot_of_window(save_path):
     try:
-        custom_config = r'--oem 3 --psm 6 -l eng -c tessedit_char_whitelist=0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'
-        data = extract_text(image, custom_config)
+        hwnd = get_hwnd()
+        if hwnd is None:
+            logger.error("지정된 창을 찾을 수 없습니다.")
+            return None
 
-        logger.info("추출된 텍스트 데이터:")
-        for i in range(len(data['level'])):
-            logger.info(f"텍스트: {data['text'][i]}, 신뢰도: {data['conf'][i]}, 위치: ({data['left'][i]}, {data['top'][i]})")
+        if bring_window_to_foreground(hwnd):
+            time.sleep(1)
 
-        for i in range(len(data['level'])):
-            if int(data['conf'][i]) > 0 and data['text'][i] == target_text:
-                (x, y, w, h) = (data['left'][i], data['top'][i], data['width'][i], data['height'][i])
-                logger.info(f"'{target_text}' 찾음: 이미지 좌표 ({x}, {y}, {w}, {h})")
+            rect = win32gui.GetWindowRect(hwnd)
+            left, top, right, bottom = rect
+            width = right - left
+            height = bottom - top
 
-                click_x = x + w // 2
-                click_y = y + h // 2
+            screenshot = pyautogui.screenshot(region=(left, top, width, height))
 
-                rect = win32gui.GetWindowRect(hwnd)
-                left, top, _, _ = rect
-                actual_click_x = left + offset[0] + click_x
-                actual_click_y = top + offset[1] + click_y
+            # 절대 경로로 변환
+            save_path = os.path.abspath(save_path)
 
-                logger.info(f"클릭 위치: ({actual_click_x}, {actual_click_y})")
-                try:
-                    pyautogui.click(actual_click_x, actual_click_y)
-                except Exception as e:
-                    logger.error(f"클릭 실패: {e}")
-                    return False
-                return True
-        logger.info(f"'{target_text}' 텍스트를 이미지에서 찾지 못했습니다.")
-        return False
-    except Exception as e:
-        logger.error(f"extract_text_and_click에서 오류 발생: {e}")
-        return False
+            # 디렉토리 생성
+            save_dir = os.path.dirname(save_path)
+            if save_dir and not os.path.exists(save_dir):
+                os.makedirs(save_dir)
 
-def click_menu_item(hwnd, menu_item):
-    if hwnd is None:
-        logger.error("잘못된 윈도우 핸들입니다.")
-        return False
+            # 확장자 처리
+            base, ext = os.path.splitext(save_path)
+            if ext.lower() != '.png':
+                save_path = base + '.png'
 
-    try:
-        logger.info(f"HWND를 사용 중: {hwnd}")
+            save_image(screenshot, save_path)
+            logger.info(f"스크린샷이 {save_path}에 저장되었습니다.")
 
-        hwnd = bring_window_to_foreground(hwnd)
-        if not hwnd or not win32gui.IsWindow(hwnd):
-            logger.error("윈도우를 포그라운드로 못 가져오거나 잘못된 윈도우 핸들입니다.")
-            return False
-
-        time.sleep(1)
-
-        calculate_coords = calculate_relative_coords(50 / 1366, 76 / 768, 300 / 1366, 614 / 768)
-        coords = calculate_coords(hwnd)
-        if coords is None:
-            logger.error("좌표 계산 실패.")
-            return False
-
-        x, y, width, height = coords
-        screenshot, offset = capture_window(hwnd, x, y, width, height)
-
-        save_image(screenshot, 'screenshot_before_preprocess')
-
-        preprocessed_image = preprocess_image(screenshot)
-
-        logger.info(f"전처리된 스크린샷에서 '{menu_item}' 텍스트를 추출하고 클릭 중...")
-        if not extract_text_and_click(preprocessed_image, hwnd, offset, menu_item):
-            logger.error(f"이미지에서 '{menu_item}' 텍스트를 찾지 못했습니다.")
-            return False
-        return True
+            return save_path
+        else:
+            logger.error("창을 포그라운드로 가져오지 못했습니다.")
+            return None
 
     except Exception as e:
-        logger.error(f"오류 발생: {e}")
-        return False
+        logger.error(f"스크린샷 캡처 중 오류 발생: {e}")
+        return None
+
+def process_profile_menu():
+    logger.info("프로필 메뉴 처리 시작")
+    screenshot_relative_path = "debug/window_screenshot.png"
+    screenshot_absolute_path = capture_screenshot_of_window(screenshot_relative_path)
+
+    if screenshot_absolute_path and os.path.exists(screenshot_absolute_path):
+        results = aws_textract_helper(screenshot_absolute_path, MENU_ITEMS)
+
+        hwnd = get_hwnd()
+        if hwnd is None:
+            logger.error("지정된 창을 찾을 수 없습니다.")
+            return
+
+        if bring_window_to_foreground(hwnd):
+            time.sleep(1)  # 창이 포그라운드로 전환될 시간을 줍니다.
+
+            # 창의 크기와 위치를 얻음
+            rect = win32gui.GetWindowRect(hwnd)
+            left, top, right, bottom = rect
+            window_width = right - left
+            window_height = bottom - top
+
+            for result in results:
+                text, text_left, text_top, text_width, text_height = result
+                logger.info(f"텍스트: {text}")
+                logger.info(f"위치: Left={text_left}, Top={text_top}, Width={text_width}, Height={text_height}")
+
+                # 텍스트 박스의 중앙 좌표 계산
+                click_x = left + text_left + text_width // 2
+                click_y = top + text_top + text_height // 2
+
+                # 좌표 클릭
+                pyautogui.click(click_x, click_y)
+                logger.info(f"Clicked at: ({click_x}, {click_y})")
+
+                # 딜레이 추가
+                time.sleep(0.5)  # 0.5초 딜레이
+
+        else:
+            logger.error("창을 포그라운드로 가져오지 못했습니다.")
+    else:
+        logger.error("스크린샷 파일이 존재하지 않습니다.")
+
+    logger.info("프로필 메뉴 처리 완료")
+
+if __name__ == "__main__":
+    process_profile_menu()

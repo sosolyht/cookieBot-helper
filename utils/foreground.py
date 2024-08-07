@@ -8,6 +8,7 @@ from utils.my_logger import setup_logger
 
 logger = setup_logger(__name__)
 
+
 def bring_window_to_foreground(hwnd):
     try:
         if not win32gui.IsWindow(hwnd):

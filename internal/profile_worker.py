@@ -6,9 +6,13 @@ import datetime
 from typing import List, Dict, Any, Optional
 from PIL import Image
 import time
-from utils.screen_utils import capture_window, preprocess_image, extract_text
-from profile_ import MenuClicker
-from icon_menu import MainMenu
+from utils.screen_utils import capture_window, preprocess_image, extract_text, save_image
+from internal.components.profile_menu import ProfileMenu
+from utils.foreground import bring_window_to_foreground
+from utils.my_logger import setup_logger
+from utils.get_hwnd import get_hwnd
+
+logger = setup_logger(__name__)
 
 class Overview:
     def __init__(self, data: Dict[str, str]):
@@ -44,70 +48,48 @@ class Cookie:
 class BrowserProfile:
     def __init__(self, profile: str, **data: Any):
         self.profile: str = profile
-        self.overview: Overview = Overview(data.get('overview', {}))
-        self.proxy: Proxy = Proxy(data.get('proxy', {}))
-        self.extensions: Dict[str, Any] = data.get('extensions', {})
-        self.timezone: Dict[str, Any] = data.get('timezone', {})
-        self.webrtc: Dict[str, Any] = data.get('webrtc', {})
-        self.geolocation: Dict[str, Any] = data.get('geolocation', {})
-        self.advanced: Advanced = Advanced(data.get('advanced', {}))
-        self.cookies: List[Cookie] = [Cookie(cookie) for cookie in data.get('cookies', [])]
-        self.bookmarks: str = data.get('bookmarks', '')
+        self.data: Dict[str, Any] = data
 
 def process_profile(json_data: str) -> Optional[BrowserProfile]:
     try:
         data = json.loads(json_data)
         profile = BrowserProfile(**data)
-        print("프로필이 성공적으로 생성되었습니다.")
+        logger.info("프로필이 성공적으로 생성되었습니다.")
         return profile
     except json.JSONDecodeError as e:
-        print(f"잘못된 JSON 형식입니다: {str(e)}")
-        print(f"문제가 발생한 위치: {e.pos}")
-        print(f"문제가 있는 줄: {json_data[max(0, e.pos - 20):e.pos + 20]}")
+        logger.error(f"잘못된 JSON 형식입니다: {str(e)}")
     except Exception as e:
-        print(f"프로필 생성 중 오류 발생: {str(e)}")
+        logger.error(f"프로필 생성 중 오류 발생: {str(e)}")
     return None
 
-def get_overview_text_and_image(pid: int) -> tuple[List[str], Optional[Image.Image]]:
-    hwnd = bring_process_to_foreground(pid)  # 이 함수는 적절히 정의되어야 합니다.
-    if hwnd:
-        main_menu = MainMenu(hwnd)  # MainMenu 객체를 초기화합니다.
-        clicker = MenuClicker(main_menu)  # MenuClicker에 MainMenu를 전달합니다.
+def process_profile_sections(profile: BrowserProfile):
+    hwnd = get_hwnd()
+    if not hwnd:
+        logger.error("Hidemyacc 윈도우를 찾을 수 없습니다.")
+        return
 
-        # Overview로 이동 시도
-        if not clicker.Overview():
-            print("Overview 클릭에 실패했습니다. NewProfile부터 다시 시도합니다.")
-            # NewProfile 클릭 후 다시 Overview 시도
-            if clicker.NewProfile():
-                time.sleep(2)  # NewProfile이 로드될 때까지 대기
-                if not clicker.Overview():
-                    print("NewProfile 이후 Overview 클릭에 실패했습니다.")
-                    return [], None
+    if not bring_window_to_foreground(hwnd):
+        logger.error("윈도우를 포그라운드로 가져오는 데 실패했습니다.")
+        return
+
+    for section in profile.data.keys():
+        logger.info(f"Processing {section.capitalize()} section")
+        section_method = getattr(ProfileMenu, section.lower(), None)
+        if section_method is None:
+            logger.warning(f"섹션 '{section}'에 해당하는 메서드를 찾을 수 없습니다. 다음 섹션으로 넘어갑니다.")
+            continue
+
+        try:
+            if section_method(hwnd):
+                logger.info(f"{section.capitalize()} 메뉴 클릭 성공")
+                time.sleep(2)  # 페이지가 로드될 때까지 대기
+                # 여기에 각 섹션에 대한 추가 처리를 할 수 있습니다.
             else:
-                print("NewProfile 클릭에 실패했습니다.")
-                return [], None
+                logger.warning(f"{section.capitalize()} 메뉴 클릭 실패")
+        except Exception as e:
+            logger.error(f"{section.capitalize()} 처리 중 오류 발생: {str(e)}")
 
-        # Overview 클릭 성공 시
-        time.sleep(2)  # Overview 페이지가 로드될 때까지 대기
-
-        screenshot, offset = capture_window(hwnd, 0, 0, 0, 0)  # 전체 화면 캡처
-
-        preprocessed_image = preprocess_image(screenshot)
-
-        custom_config = r'--oem 3 --psm 6'
-        data = extract_text(preprocessed_image, custom_config)
-
-        all_text = []
-        for i in range(len(data['level'])):
-            if int(data['conf'][i]) > 60:
-                text = data['text'][i].strip()
-                if text:
-                    all_text.append(text)
-
-        return all_text, screenshot
-    else:
-        print("윈도우를 전경으로 가져오는 데 실패했습니다.")
-        return [], None
+        logger.info(f"{section.capitalize()} 섹션 처리 완료")
 
 if __name__ == "__main__":
     # JSON 데이터 예제
@@ -122,6 +104,10 @@ if __name__ == "__main__":
             "protocol": "HTTP",
             "proxy": "192.168.1.1:8080"
         },
+        "extensions": {},
+        "timezone": {},
+        "webrtc": {},
+        "geolocation": {},
         "advanced": {
             "start_url": "https://www.example.com",
             "screen_resolution": "1920x1080",
@@ -148,40 +134,7 @@ if __name__ == "__main__":
     # 프로필 처리
     profile = process_profile(sample_message)
     if profile:
-        print(f"프로필 이름: {profile.profile}")
-        print(f"OS: {profile.overview.os}")
-        print(f"브라우저: {profile.overview.browser}")
-        print(f"프록시 프로토콜: {profile.proxy.protocol}")
-        print(f"프록시 주소: {profile.proxy.proxy}")
-        print(f"시작 URL: {profile.advanced.start_url}")
-        print(f"화면 해상도: {profile.advanced.screen_resolution}")
-        print(f"CPU 코어 수: {profile.advanced.cpu}")
-        print(f"메모리: {profile.advanced.memory}MB")
+        logger.info(f"프로필 이름: {profile.profile}")
+        process_profile_sections(profile)
 
-        if profile.cookies:
-            print("쿠키:")
-            for cookie in profile.cookies:
-                print(f"  도메인: {cookie.domain}")
-                print(f"  이름: {cookie.name}")
-                print(f"  값: {cookie.value}")
-
-        print(f"북마크: {profile.bookmarks}")
-
-    # Overview 텍스트 및 이미지 가져오기
-    pid = 16572  # 실제 프로세스 ID로 변경
-    overview_text, screenshot = get_overview_text_and_image(pid)
-    if overview_text:
-        print("Overview 페이지의 텍스트:")
-        for text in overview_text:
-            print(text)
-
-        if screenshot:
-            # 이미지 저장
-            timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-            image_filename = f"overview_screenshot_{timestamp}.png"
-            screenshot.save(image_filename)
-            print(f"스크린샷이 {image_filename}으로 저장되었습니다.")
-    else:
-        print("Overview 페이지의 텍스트와 이미지를 가져오는데 실패했습니다.")
-
-print("프로그램이 완료되었습니다.")
+logger.info("프로그램이 완료되었습니다.")
