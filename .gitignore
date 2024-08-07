@@ -28,4 +28,5 @@ __pycache__/
 /screenshots
 /debug_images
 
-!img/
+/resources/img
+app.log

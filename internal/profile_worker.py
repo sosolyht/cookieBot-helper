@@ -1,11 +1,14 @@
+# File: profile_worker.py
+# Path: internal\profile_worker.py
+
 import json
 import datetime
 from typing import List, Dict, Any, Optional
 from PIL import Image
 import time
-from screen_utils import capture_window, preprocess_image, extract_text
-from new_profile_menu_select import MenuClicker
-from menu_finder import MainMenu  # MainMenu를 임포트합니다.
+from utils.screen_utils import capture_window, preprocess_image, extract_text
+from profile_ import MenuClicker
+from icon_menu import MainMenu
 
 class Overview:
     def __init__(self, data: Dict[str, str]):

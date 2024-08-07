@@ -1,3 +1,6 @@
+# File: icon_menu.py
+# Path: internal\icon_menu.py
+
 import time
 import win32gui
 import cv2
@@ -7,7 +10,10 @@ import pyautogui
 import ctypes
 from PIL import Image
 from utils.foreground import bring_window_to_foreground
+from utils.my_logger import setup_logger
 
+# 로거 설정
+logger = setup_logger("IconMenu")
 
 def capture_client_area(hwnd):
     rect = win32gui.GetWindowRect(hwnd)
@@ -29,7 +35,6 @@ def capture_client_area(hwnd):
         img = Image.frombytes('RGB', (screenshot.width, screenshot.height), screenshot.rgb)
         return np.array(img)
 
-
 def find_button_advanced(screenshot, button_images):
     screenshot_gray = cv2.cvtColor(screenshot, cv2.COLOR_BGR2GRAY)
     best_match, best_value, best_size = None, -1, None
@@ -37,14 +42,14 @@ def find_button_advanced(screenshot, button_images):
     for idx, img_path in enumerate(button_images):
         template = cv2.imread(img_path, cv2.IMREAD_GRAYSCALE)
         if template is None:
-            print(f"Failed to load image: {img_path}")
+            logger.error(f"이미지를 불러오지 못했습니다: {img_path}")
             continue
 
         h, w = template.shape[:2]
         result = cv2.matchTemplate(screenshot_gray, template, cv2.TM_CCOEFF_NORMED)
         _, max_val, _, max_loc = cv2.minMaxLoc(result)
 
-        print(f"Button: {img_path}, Max value: {max_val}")
+        logger.debug(f"버튼: {img_path}, 최대 값: {max_val}")
 
         if max_val > best_value:
             best_value = max_val
@@ -52,12 +57,11 @@ def find_button_advanced(screenshot, button_images):
             best_size = (w, h)
 
     if best_value > 0.7:
-        print(f"Best match: value={best_value}, location={best_match}")
+        logger.info(f"최고 매치: 값={best_value}, 위치={best_match}")
         return best_match, best_size
     else:
-        print(f"No good match found. Best value: {best_value}")
+        logger.warning(f"좋은 매치를 찾지 못했습니다. 최고 값: {best_value}")
         return None, None
-
 
 def get_click_coordinates(hwnd, location):
     rect = win32gui.GetWindowRect(hwnd)
@@ -77,8 +81,7 @@ def get_click_coordinates(hwnd, location):
 
     return click_x, click_y
 
-
-def click_button(hwnd, button_images):
+def icon_menu(hwnd, button_images):
     bring_window_to_foreground(hwnd)  # 윈도우를 전면으로 가져오기
     time.sleep(1)
     screenshot = capture_client_area(hwnd)
@@ -95,7 +98,7 @@ def click_button(hwnd, button_images):
         if new_location:
             click_x, click_y = get_click_coordinates(hwnd, new_location)
 
-        print(f"Clicking at ({click_x}, {click_y})")
+        logger.info(f"클릭 위치: ({click_x}, {click_y})")
         pyautogui.click(click_x, click_y)
     else:
-        print(f"Button not found.")
+        logger.warning("버튼을 찾을 수 없습니다.")
