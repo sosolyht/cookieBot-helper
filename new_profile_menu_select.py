@@ -1,7 +1,6 @@
-#new_profile_menu_select.py
-
 import psutil
 import win32gui
+import win32con
 import win32com.client
 import win32process
 import time
@@ -11,10 +10,10 @@ from screen_utils import calculate_relative_coords, capture_window, preprocess_i
 class MenuClicker:
     def __init__(self):
         self.MENU_ITEMS = [
-            "Overview", "Proxy", "Extensions", "Timezone", "WebRTC",
-            "Geolocation", "Advanced", "Cookies", "Bookmarks"
-        ]
-        self.calculate_coords = calculate_relative_coords(1366, 768, 50/1366, 76/768, 300/1366, 614/768)
+        "Overview", "Proxy", "Extensions", "Timezone", "WebRTC",
+        "Geolocation", "Advanced", "Cookies", "Bookmarks"
+    ]
+        self.calculate_coords = calculate_relative_coords
 
     def bring_process_to_foreground(self, pid):
         def callback(hwnd, hwnds):
@@ -28,11 +27,13 @@ class MenuClicker:
         win32gui.EnumWindows(callback, hwnds)
 
         if hwnds:
+            hwnd = hwnds[0]
             shell = win32com.client.Dispatch("WScript.Shell")
-            shell.SendKeys('%')
-            win32gui.SetForegroundWindow(hwnds[0])
-            win32gui.BringWindowToTop(hwnds[0])
-            return hwnds[0]
+            shell.SendKeys('%')  # Alt 키를 보내서 창을 활성화
+            win32gui.ShowWindow(hwnd, win32con.SW_RESTORE)  # 최소화된 창을 복원
+            win32gui.SetForegroundWindow(hwnd)
+            win32gui.BringWindowToTop(hwnd)
+            return hwnd
         else:
             print(f"No visible window found for PID {pid}")
             return None
@@ -41,8 +42,7 @@ class MenuClicker:
         custom_config = r'--oem 3 --psm 6 -l eng -c tessedit_char_whitelist=0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'
         data = extract_text(image, custom_config)
 
-        n_boxes = len(data['level'])
-        for i in range(n_boxes):
+        for i in range(len(data['level'])):
             if int(data['conf'][i]) > 0 and data['text'][i] == target_text:
                 (x, y, w, h) = (data['left'][i], data['top'][i], data['width'][i], data['height'][i])
                 print(f"Found '{target_text}' at: ({x}, {y}, {w}, {h}) in image coordinates")
@@ -92,6 +92,7 @@ class MenuClicker:
         except Exception as e:
             print(f"An error occurred: {e}")
             return False
+
 
     def Overview(self, pid):
         return self.click_menu_item(pid, "Overview")

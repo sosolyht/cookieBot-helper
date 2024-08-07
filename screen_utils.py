@@ -8,21 +8,21 @@ import pytesseract
 
 pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
 
-def calculate_relative_coords(base_width, base_height, rel_x, rel_y, rel_width, rel_height):
-    def calculate(hwnd):
-        rect = win32gui.GetWindowRect(hwnd)
-        left, top, right, bottom = rect
-        width = right - left
-        height = bottom - top
+import win32gui
 
-        actual_x = int(rel_x * width)
-        actual_y = int(rel_y * height)
-        actual_width = int(rel_width * width)
-        actual_height = int(rel_height * height)
+def calculate_relative_coords(hwnd):
+    rect = win32gui.GetWindowRect(hwnd)
+    left, top, right, bottom = rect
+    width = right - left
+    height = bottom - top
 
-        return actual_x, actual_y, actual_width, actual_height
+    # 절대 좌표 계산
+    actual_x = int(50 / 1366 * width)
+    actual_y = int(76 / 768 * height)
+    actual_width = int(300 / 1366 * width)
+    actual_height = int(614 / 768 * height)
 
-    return calculate
+    return actual_x, actual_y, actual_width, actual_height
 
 def capture_window(hwnd, x, y, width, height):
     rect = win32gui.GetWindowRect(hwnd)
