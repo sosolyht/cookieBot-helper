@@ -2,48 +2,16 @@
 # Path: internal\profile_worker.py
 
 import json
-import datetime
-from typing import List, Dict, Any, Optional
-from PIL import Image
 import time
-from utils.screen_utils import capture_window, preprocess_image, extract_text, save_image
-from internal.components.profile_menu import ProfileMenu
+from typing import Dict, Any, Optional
+from utils.get_hwnd import get_hwnd
 from utils.foreground import bring_window_to_foreground
 from utils.my_logger import setup_logger
-from utils.get_hwnd import get_hwnd
+from internal.components.icon_menu import IconMenu
+from internal.components.profile_menu import ProfileMenu
+from internal.profile_menu import get_menu_coordinates, click_menu_item
 
 logger = setup_logger(__name__)
-
-class Overview:
-    def __init__(self, data: Dict[str, str]):
-        self.os: str = data.get('os', '')
-        self.browser: str = data.get('browser', '')
-
-class Proxy:
-    def __init__(self, data: Dict[str, str]):
-        self.protocol: str = data.get('protocol', '')
-        self.proxy: str = data.get('proxy', '')
-
-class Advanced:
-    def __init__(self, data: Dict[str, Any]):
-        self.start_url: str = data.get('start_url', '')
-        self.screen_resolution: str = data.get('screen_resolution', '')
-        self.cpu: int = data.get('cpu', 0)
-        self.memory: int = data.get('memory', 0)
-
-class Cookie:
-    def __init__(self, data: Dict[str, Any]):
-        self.domain: str = data.get('domain', '')
-        self.expirationdate: float = data.get('expirationdate', 0.0)
-        self.hostonly: bool = data.get('hostonly', False)
-        self.httponly: bool = data.get('httponly', False)
-        self.name: str = data.get('name', '')
-        self.path: str = data.get('path', '')
-        self.samesite: Optional[str] = data.get('samesite')
-        self.secure: bool = data.get('secure', False)
-        self.session: bool = data.get('session', False)
-        self.storeid: Optional[str] = data.get('storeid')
-        self.value: str = data.get('value', '')
 
 class BrowserProfile:
     def __init__(self, profile: str, **data: Any):
@@ -62,34 +30,80 @@ def process_profile(json_data: str) -> Optional[BrowserProfile]:
         logger.error(f"프로필 생성 중 오류 발생: {str(e)}")
     return None
 
-def process_profile_sections(profile: BrowserProfile):
+def process_icon_menu():
+    logger.info("아이콘 메뉴 처리 시작")
+    time.sleep(1)  # 윈도우가 완전히 로드될 때까지 5초 대기
+
+    hwnd = get_hwnd()
+    if not hwnd or not bring_window_to_foreground(hwnd):
+        logger.error("윈도우를 찾을 수 없거나 포그라운드로 가져올 수 없습니다")
+        return False
+
+    retry_count = 3
+    for i in range(retry_count):
+        if IconMenu.new_profile(hwnd):
+            logger.info("New Profile 아이콘 선택 완료")
+            return True
+        else:
+            logger.warning(f"New Profile 아이콘 선택 실패 (시도 {i+1}/{retry_count})")
+            time.sleep(2)  # 재시도 전 2초 대기
+
+    logger.error("New Profile 아이콘 선택 최종 실패")
+    return False
+
+
+
+def apply_profile_settings(profile: BrowserProfile):
     hwnd = get_hwnd()
     if not hwnd:
-        logger.error("Hidemyacc 윈도우를 찾을 수 없습니다.")
+        logger.error("윈도우를 찾을 수 없습니다")
         return
 
-    if not bring_window_to_foreground(hwnd):
-        logger.error("윈도우를 포그라운드로 가져오는 데 실패했습니다.")
-        return
+    # 초기 메뉴 좌표 가져오기
+    get_menu_coordinates(hwnd)
 
-    for section in profile.data.keys():
-        logger.info(f"Processing {section.capitalize()} section")
-        section_method = getattr(ProfileMenu, section.lower(), None)
-        if section_method is None:
-            logger.warning(f"섹션 '{section}'에 해당하는 메서드를 찾을 수 없습니다. 다음 섹션으로 넘어갑니다.")
-            continue
+    for section, settings in profile.data.items():
+        if section == "profile":
+            continue  # profile은 이미 처리됨
 
-        try:
-            if section_method(hwnd):
-                logger.info(f"{section.capitalize()} 메뉴 클릭 성공")
-                time.sleep(2)  # 페이지가 로드될 때까지 대기
-                # 여기에 각 섹션에 대한 추가 처리를 할 수 있습니다.
-            else:
-                logger.warning(f"{section.capitalize()} 메뉴 클릭 실패")
-        except Exception as e:
-            logger.error(f"{section.capitalize()} 처리 중 오류 발생: {str(e)}")
+        # 메뉴 항목 클릭 시도
+        if click_menu_item(hwnd, section):
+            logger.info(f"{section} 섹션 선택 완료")
 
-        logger.info(f"{section.capitalize()} 섹션 처리 완료")
+            # 각 섹션별 설정 로직
+            if section == "overview":
+                logger.info(f"OS: {settings.get('os')}, Browser: {settings.get('browser')}")
+            elif section == "proxy":
+                logger.info(f"Proxy 설정: {settings.get('protocol')} - {settings.get('proxy')}")
+            elif section == "extensions":
+                logger.info("Extensions 설정")
+            elif section == "timezone":
+                logger.info("Timezone 설정")
+            elif section == "webrtc":
+                logger.info("WebRTC 설정")
+            elif section == "geolocation":
+                logger.info("Geolocation 설정")
+            elif section == "advanced":
+                logger.info(f"Start URL: {settings.get('start_url')}")
+                logger.info(f"Screen Resolution: {settings.get('screen_resolution')}")
+                logger.info(f"CPU: {settings.get('cpu')}, Memory: {settings.get('memory')} MB")
+            elif section == "cookies":
+                logger.info(f"{len(settings)} 개의 쿠키 설정")
+            elif section == "bookmarks":
+                bookmarks = settings.split(',')
+                logger.info(f"{len(bookmarks)} 개의 북마크 설정")
+
+            time.sleep(1)  # 설정 적용을 위한 대기 시간
+        else:
+            logger.error(f"{section} 섹션 선택 실패")
+            # 메뉴 좌표 다시 가져오기 시도
+            get_menu_coordinates(hwnd)
+
+
+def execute_process():
+    logger.info("프로세스 실행 시작")
+    # 실행 단계 로직 추가
+    logger.info("프로세스 실행 완료")
 
 if __name__ == "__main__":
     # JSON 데이터 예제
@@ -131,10 +145,22 @@ if __name__ == "__main__":
     }
     '''
 
+    # Icon Menu 처리
+    icon_menu_result = process_icon_menu()
+    if not icon_menu_result:
+        logger.warning("New Profile 아이콘을 찾지 못했습니다. 계속 진행합니다.")
+
+    time.sleep(1)  # 아이콘 선택 후 10초 대기
+
     # 프로필 처리
     profile = process_profile(sample_message)
     if profile:
         logger.info(f"프로필 이름: {profile.profile}")
-        process_profile_sections(profile)
+        apply_profile_settings(profile)
 
-logger.info("프로그램이 완료되었습니다.")
+    time.sleep(0.5)  # 프로필 설정 적용 후 5초 대기
+
+    # 실행 단계
+    execute_process()
+
+    logger.info("프로그램이 완료되었습니다.")

@@ -15,6 +15,7 @@ from utils.my_logger import setup_logger
 # 로거 설정
 logger = setup_logger("IconMenu")
 
+
 def capture_client_area(hwnd):
     rect = win32gui.GetWindowRect(hwnd)
     client_rect = win32gui.GetClientRect(hwnd)
@@ -35,7 +36,27 @@ def capture_client_area(hwnd):
         img = Image.frombytes('RGB', (screenshot.width, screenshot.height), screenshot.rgb)
         return np.array(img)
 
-def find_button_advanced(screenshot, button_images):
+
+def get_click_coordinates(hwnd, location):
+    rect = win32gui.GetWindowRect(hwnd)
+    client_rect = win32gui.GetClientRect(hwnd)
+    left, top = rect[:2]
+    client_right, client_bottom = client_rect[2:]
+
+    border_left = (rect[2] - left - client_right) // 2
+    title_bar = rect[3] - top - client_bottom - border_left
+
+    dpi = ctypes.windll.user32.GetDpiForWindow(hwnd)
+    scale_factor = dpi / 96.0
+
+    button_x, button_y = location
+    click_x = left + border_left + int(button_x / scale_factor)
+    click_y = top + title_bar + int(button_y / scale_factor)
+
+    return click_x, click_y
+
+
+def find_button_advanced(screenshot, button_images, threshold=0.5):
     screenshot_gray = cv2.cvtColor(screenshot, cv2.COLOR_BGR2GRAY)
     best_match, best_value, best_size = None, -1, None
 
@@ -56,7 +77,7 @@ def find_button_advanced(screenshot, button_images):
             best_match = (max_loc[0] + w // 2, max_loc[1] + h // 2)
             best_size = (w, h)
 
-    if best_value > 0.7:
+    if best_value > threshold:
         logger.info(f"최고 매치: 값={best_value}, 위치={best_match}")
         return best_match, best_size
     else:
@@ -66,39 +87,43 @@ def find_button_advanced(screenshot, button_images):
 def get_click_coordinates(hwnd, location):
     rect = win32gui.GetWindowRect(hwnd)
     client_rect = win32gui.GetClientRect(hwnd)
-    left, top = rect[:2]
-    client_right, client_bottom = client_rect[2:]
+    left, top, _, _ = rect
+    _, _, client_right, client_bottom = client_rect
 
-    border_left = (rect[2] - left - client_right) // 2
-    title_bar = rect[3] - top - client_bottom - border_left
+    border_left = (rect[2] - rect[0] - client_right) // 2
+    title_bar = rect[3] - rect[1] - client_bottom - border_left
 
-    dpi = ctypes.windll.user32.GetDpiForWindow(hwnd)
-    scale_factor = dpi / 96.0
-
-    button_x, button_y = location
-    click_x = left + border_left + int(button_x / scale_factor)
-    click_y = top + title_bar + int(button_y / scale_factor)
+    click_x = left + border_left + location[0]
+    click_y = top + title_bar + location[1]
 
     return click_x, click_y
 
 def icon_menu(hwnd, button_images):
-    bring_window_to_foreground(hwnd)  # 윈도우를 전면으로 가져오기
+    logger.info("아이콘 메뉴 처리 시작")
+    bring_window_to_foreground(hwnd)
     time.sleep(1)
+
     screenshot = capture_client_area(hwnd)
-    location, _ = find_button_advanced(screenshot, button_images)
+    location, size = find_button_advanced(screenshot, button_images, threshold=0.5)
 
     if location:
         click_x, click_y = get_click_coordinates(hwnd, location)
+        logger.info(f"버튼 위치 확인: ({click_x}, {click_y}), 크기: {size}")
+
         pyautogui.moveTo(click_x, click_y)
         time.sleep(0.5)
 
-        # 위치 재확인
         screenshot = capture_client_area(hwnd)
-        new_location, _ = find_button_advanced(screenshot, button_images)
+        new_location, new_size = find_button_advanced(screenshot, button_images, threshold=0.5)
         if new_location:
             click_x, click_y = get_click_coordinates(hwnd, new_location)
+            logger.info(f"버튼 위치 재확인: ({click_x}, {click_y}), 크기: {new_size}")
 
-        logger.info(f"클릭 위치: ({click_x}, {click_y})")
+        logger.info(f"클릭 시도: ({click_x}, {click_y})")
         pyautogui.click(click_x, click_y)
+
+        logger.info("아이콘 메뉴 클릭 성공")
+        return True
     else:
         logger.warning("버튼을 찾을 수 없습니다.")
+        return False
